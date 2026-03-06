@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1772617124594,
+      "tag": "0000_unique_grey_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772695890557,
+      "tag": "0001_tricky_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772708106002,
+      "tag": "0002_motionless_loa",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772711036902,
+      "tag": "0003_mysterious_thunderbolts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772781115371,
+      "tag": "0004_striped_bloodaxe",
+      "breakpoints": true
+    }
+  ]
+}
