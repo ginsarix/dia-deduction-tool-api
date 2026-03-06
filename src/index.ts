@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { env } from "./config/env.js";
 import { auth } from "./lib/auth.js";
+import { authMiddleware } from "./middleware.js";
 import connectionsRouteGroup from "./routes/connections.js";
 import hourDefinitionsRouteGroup from "./routes/hour-definitions.js";
 import projectsRouteGroup from "./routes/projects.js";
@@ -45,6 +46,11 @@ app.onError((err, c) => {
 app.get("/", (c) => {
   return c.text("Arge Merkezi Hesaplama API");
 });
+app.use("/connections/*", authMiddleware);
+app.use("/workers/*", authMiddleware);
+app.use("/projects/*", authMiddleware);
+app.use("/hour-definitions/*", authMiddleware);
+
 app.route("/connections", connectionsRouteGroup);
 app.route("/workers", workersRouteGroup);
 app.route("/projects", projectsRouteGroup);
