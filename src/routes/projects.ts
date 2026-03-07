@@ -144,6 +144,35 @@ app.delete(
   },
 );
 
+app.get(
+  "/:id/workers",
+  zValidator("param", z.object({ id: z.coerce.number().int().positive() })),
+  async (c) => {
+    const { id } = c.req.valid("param");
+
+    const workers = await db
+      .select({
+        workerId: workerTable.id,
+        workerName: workerTable.name,
+        diaKey: workerTable.diaKey,
+        hourDefinitionId: hourDefinitionTable.id,
+        multiplier: hourDefinitionTable.multiplier,
+      })
+      .from(projectWorkersTable)
+      .innerJoin(workerTable, eq(projectWorkersTable.workerId, workerTable.id))
+      .innerJoin(
+        hourDefinitionTable,
+        eq(projectWorkersTable.hourDefinitionId, hourDefinitionTable.id),
+      )
+      .where(eq(projectWorkersTable.projectId, id));
+
+    return c.json(
+      { message: "Personeller başarıyla getirildi", workers },
+      200,
+    );
+  },
+);
+
 app.patch(
   "/:id/workers",
   zValidator("param", z.object({ id: z.coerce.number().int().positive() })),
@@ -224,6 +253,7 @@ type TallyKeys = keyof Omit<DiaWorkerTally, ExcludedTallyFields>;
 type CalculationResult = {
   [K in TallyKeys]: number;
 } & {
+  workerName: string;
   employerCostWithoutIncentive: number;
   employerCostWithIncentive: number;
 };
@@ -232,10 +262,10 @@ app.get(
   "/:id/calculations",
   zValidator(
     "param",
-    z.object({ projectId: z.coerce.number().int().positive() }),
+    z.object({ id: z.coerce.number().int().positive() }),
   ),
   async (c) => {
-    const { projectId } = c.req.valid("param");
+    const { id: projectId } = c.req.valid("param");
 
     const assignmentsQuery = db
       .select({ hourDefinition: hourDefinitionTable, worker: workerTable })
@@ -339,7 +369,9 @@ app.get(
       // we already filter above so this can't be undefined
       const workerHour = workerHourMap.get(t._key_per_personel)!;
 
-      const calculated = {} as CalculationResult;
+      const calculated = {
+        workerName: `${adi} ${soyadi}`,
+      } as CalculationResult;
 
       for (const [key, value] of Object.entries(toCalculate)) {
         const numValue = Number(value);
