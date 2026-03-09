@@ -52,8 +52,6 @@ export class DiaClient {
       sessionId,
     );
 
-    await client.ensureSession();
-
     return client;
   }
 

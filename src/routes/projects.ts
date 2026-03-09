@@ -166,10 +166,7 @@ app.get(
       )
       .where(eq(projectWorkersTable.projectId, id));
 
-    return c.json(
-      { message: "Personeller başarıyla getirildi", workers },
-      200,
-    );
+    return c.json({ message: "Personeller başarıyla getirildi", workers }, 200);
   },
 );
 
@@ -260,10 +257,7 @@ type CalculationResult = {
 
 app.get(
   "/:id/calculations",
-  zValidator(
-    "param",
-    z.object({ id: z.coerce.number().int().positive() }),
-  ),
+  zValidator("param", z.object({ id: z.coerce.number().int().positive() })),
   async (c) => {
     const { id: projectId } = c.req.valid("param");
 
@@ -333,9 +327,12 @@ app.get(
       workerHourMap.has(t._key_per_personel),
     );
 
-    const calculations = matchedTallies.map((t) => {
+    const stripNonCalculable = (t: DiaWorkerTally) => {
       const {
         _key_per_personel,
+        toplamsigortagun,
+        argefaaliyetgunsayisi,
+        argegelirvergisigunsayisi,
         muhasebelesme,
         duzenlemetarihi,
         persdepartmanaciklama,
@@ -366,11 +363,25 @@ app.get(
         ...toCalculate
       } = t;
 
+      return toCalculate;
+    };
+
+    const originalTallies = matchedTallies.map((t) => ({
+      ...stripNonCalculable(t),
+      employerCostWithoutIncentive: employerCostWithoutIncentive(t),
+      employerCostWithIncentive: employerCostWithIncentive(t),
+      workerName: `${t.adi} ${t.soyadi}`,
+    }));
+
+    const calculations = matchedTallies.map((t) => {
+      // exclude properties that are not meant to be calculated
+      const toCalculate = stripNonCalculable(t);
+
       // we already filter above so this can't be undefined
       const workerHour = workerHourMap.get(t._key_per_personel)!;
 
       const calculated = {
-        workerName: `${adi} ${soyadi}`,
+        workerName: `${t.adi} ${t.soyadi}`,
       } as CalculationResult;
 
       for (const [key, value] of Object.entries(toCalculate)) {
@@ -394,6 +405,7 @@ app.get(
     return c.json(
       {
         message: "Hesaplamalar başarıyla getirildi",
+        originalTallies,
         calculations,
       },
       200,
