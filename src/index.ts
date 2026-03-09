@@ -15,7 +15,7 @@ app.use(
   "/*",
   cors({
     origin: (origin) => {
-      if (origin === "https://argeoms.panunet.com.tr") {
+      if (origin === env.APP_URL) {
         return origin;
       }
 
@@ -61,7 +61,7 @@ serve(
     fetch: app.fetch,
     port: 3000,
   },
-  (info) => {
-    console.log(`Server is running on http://localhost:${info.port}`);
+  () => {
+    console.log(`Server is running on ${env.APP_URL}`);
   },
 );
