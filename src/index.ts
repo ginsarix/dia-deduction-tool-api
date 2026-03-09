@@ -12,24 +12,21 @@ import projectsRouteGroup from "./routes/projects.js";
 import workersRouteGroup from "./routes/workers.js";
 
 const app = new Hono().basePath("/api");
+
+// in case of reverse proxy
+// app.use("/*", (c, next) => {
+//   const proto = c.req.header("x-forwarded-proto");
+//   if (proto === "https") {
+//     c.req.raw.headers.set("x-forwarded-proto", "https");
+//   }
+//   return next();
+// });
+
 app.use(logger());
 app.use(
   "/*",
   cors({
-    origin: (origin) => {
-      if (origin === env.APP_URL) {
-        return origin;
-      }
-
-      if (
-        env.NODE_ENV === "development" &&
-        origin.startsWith("http://localhost:")
-      ) {
-        return origin;
-      }
-
-      return null;
-    },
+    origin: env.ORIGIN_URL,
     credentials: true,
   }),
 );
@@ -70,9 +67,11 @@ app.route("/hour-definitions", hourDefinitionsRouteGroup);
 serve(
   {
     fetch: app.fetch,
-    port: 3000,
+    // hosting environment might inject its own port
+    port: Number(process.env.PORT) || 3000,
+    ...(env.NODE_ENV === "production" && { host: "0.0.0.0" }),
   },
-  () => {
-    console.log(`Server is running on ${env.APP_URL}`);
+  ({ port }) => {
+    console.log(`Server is running on ${port}`);
   },
 );

@@ -6,7 +6,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const schema = z.object({
-  APP_URL: z.url(),
+  ORIGIN_URL: z.url(),
   BETTER_AUTH_URL: z.url(),
   DATABASE_URL: z.url(),
   NODE_ENV: z.enum(["production", "development"]),
