@@ -40,7 +40,7 @@ app.onError((err, c) => {
 
   console.error("Critical Error:", err);
 
-  const isDev = process.env.NODE_ENV === "development";
+  const isDev = env.NODE_ENV === "development";
 
   return c.json(
     {
