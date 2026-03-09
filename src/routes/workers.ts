@@ -1,12 +1,14 @@
 import { zValidator } from "@hono/zod-validator";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { connectionTable } from "../db/schemas/connection.js";
 import { workerTable } from "../db/schemas/worker.js";
 import { DiaClient } from "../services/dia.js";
 import { aesDecrypt } from "../utils/aes-256-gcm.js";
+import { diaResponseIsSuccess } from "../utils/dia.js";
 import {
   workerInsertSchema,
   workerUpdateSchema,
@@ -97,6 +99,13 @@ app.post(
         params: { selectedcolumns: ["adisoyadi", "_key"] },
       },
     });
+
+    if (!diaResponseIsSuccess(diaWorkers)) {
+      return c.json(
+        { message: diaWorkers.msg },
+        +diaWorkers.code as ContentfulStatusCode,
+      );
+    }
 
     const incomingWorkers = diaWorkers.result.map((w) => ({
       name: w.adisoyadi,

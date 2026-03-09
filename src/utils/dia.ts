@@ -1,5 +1,9 @@
 import { URL_BASE } from "../constants/dia.js";
-import type { DiaWorkerTally } from "../types/dia-responses.js";
+import type {
+  DiaResponse,
+  DiaSuccessResponse,
+  DiaWorkerTally,
+} from "../types/dia-responses.js";
 
 export const createDiaUrl = (serverCode: string, module: string) =>
   `https://${serverCode}.${URL_BASE}/${module}/json`;
@@ -37,3 +41,7 @@ export function employerCostWithIncentive(p: DiaWorkerTally) {
     +p.sgk_2828kanunindirimi
   );
 }
+
+export const diaResponseIsSuccess = <T>(
+  response: DiaResponse<T>,
+): response is DiaSuccessResponse<T> => "result" in response;

@@ -1,7 +1,14 @@
-export type DiaResponse<T> = {
+export type DiaSuccessResponse<T> = {
   code: string;
   result: T;
 };
+
+export type DiaErrorResponse = {
+  code: string;
+  msg: string;
+};
+
+export type DiaResponse<T> = DiaSuccessResponse<T> | DiaErrorResponse;
 
 export type DiaLoginResponse = {
   code: string;

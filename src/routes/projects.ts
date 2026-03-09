@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { count, eq } from "drizzle-orm";
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { workerTallySelectedColumns } from "../constants/dia.js";
 import { db } from "../db/index.js";
@@ -14,6 +15,7 @@ import type { DiaFilter } from "../types/dia-requests.js";
 import type { DiaWorkerTally } from "../types/dia-responses.js";
 import { aesDecrypt } from "../utils/aes-256-gcm.js";
 import {
+  diaResponseIsSuccess,
   employerCostWithIncentive,
   employerCostWithoutIncentive,
 } from "../utils/dia.js";
@@ -256,10 +258,16 @@ type CalculationResult = {
 };
 
 app.get(
-  "/:id/calculations",
-  zValidator("param", z.object({ id: z.coerce.number().int().positive() })),
+  "/:id/calculations/:month?",
+  zValidator(
+    "param",
+    z.object({
+      id: z.coerce.number().int().positive(),
+      month: z.coerce.number().int().min(1).max(12).optional(),
+    }),
+  ),
   async (c) => {
-    const { id: projectId } = c.req.valid("param");
+    const { id: projectId, month } = c.req.valid("param");
 
     const assignmentsQuery = db
       .select({ hourDefinition: hourDefinitionTable, worker: workerTable })
@@ -304,20 +312,37 @@ app.get(
       },
     });
 
-    const workerTalliesFilter: DiaFilter = {
+    const workerKeysFilter: DiaFilter = {
       field: "_key_per_personel",
       operator: "IN",
       value: assignments.map((a) => a.worker.diaKey).join(","),
     };
 
+    const workerTalliesFilters: DiaFilter[] = [workerKeysFilter];
+
+    if (month) {
+      workerTalliesFilters.push({
+        field: "duzenlemeayno",
+        operator: "=",
+        value: String(month).padStart(2, "0"),
+      });
+    }
+
     const workerTallies = await dia.getWorkerTallies({
       per_personel_puantaj_listele: {
         firma_kodu: connection.diaFirmCode,
         donem_kodu: connection.diaPeriodCode ?? 0,
-        filters: [workerTalliesFilter],
+        filters: workerTalliesFilters,
         params: { selectedcolumns: workerTallySelectedColumns },
       },
     });
+
+    if (!diaResponseIsSuccess(workerTallies)) {
+      return c.json(
+        { message: workerTallies.msg },
+        +workerTallies.code as ContentfulStatusCode,
+      );
+    }
 
     const workerHourMap = new Map(
       assignments.map((a) => [a.worker.diaKey, a.hourDefinition]),
