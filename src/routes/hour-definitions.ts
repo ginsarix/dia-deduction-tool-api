@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { DrizzleQueryError, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db/index.js";
@@ -8,6 +8,7 @@ import {
   hourDefinitionInsertSchema,
   hourDefinitionUpdateSchema,
 } from "../validations/schemas.js";
+import { DatabaseError } from "pg";
 
 const app = new Hono();
 
@@ -91,12 +92,27 @@ app.delete(
   async (c) => {
     const { id } = c.req.valid("param");
 
-    const deleteResult = await db
-      .delete(hourDefinitionTable)
-      .where(eq(hourDefinitionTable.id, id));
+    try {
+      const deleteResult = await db
+        .delete(hourDefinitionTable)
+        .where(eq(hourDefinitionTable.id, id));
 
-    if (!deleteResult.rowCount) {
-      return c.json({ message: "Saat tanımlaması bulunamadı" }, 404);
+      if (!deleteResult.rowCount) {
+        return c.json({ message: "Saat tanımlaması bulunamadı" }, 404);
+      }
+    } catch (error) {
+      if (
+        error instanceof DrizzleQueryError &&
+        error.cause instanceof DatabaseError &&
+        error.cause.code === "23503"
+      ) {
+        return c.json(
+          { message: "Bu saat tanımlaması kullanımda olduğu için silinemedi" },
+          409,
+        );
+      }
+
+      throw error;
     }
 
     return c.json({ message: "Saat tanımlaması silindi" }, 200);

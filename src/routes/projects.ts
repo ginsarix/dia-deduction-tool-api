@@ -253,6 +253,10 @@ type CalculationResult = {
   [K in TallyKeys]: number;
 } & {
   workerName: string;
+  department: string;
+  tc: string;
+  branch: string;
+  mission: string;
   employerCostWithoutIncentive: number;
   employerCostWithIncentive: number;
 };
@@ -391,11 +395,19 @@ app.get(
       return toCalculate;
     };
 
+    const workerInfoFields = (t: DiaWorkerTally) => ({
+      workerName: `${t.adi} ${t.soyadi}`,
+      tc: t.tckimlikno,
+      department: t.persdepartmanaciklama,
+      branch: t.sube,
+      mission: t.gorevi,
+    });
+
     const originalTallies = matchedTallies.map((t) => ({
       ...stripNonCalculable(t),
       employerCostWithoutIncentive: employerCostWithoutIncentive(t),
       employerCostWithIncentive: employerCostWithIncentive(t),
-      workerName: `${t.adi} ${t.soyadi}`,
+      ...workerInfoFields(t),
     }));
 
     const calculations = matchedTallies.map((t) => {
@@ -405,9 +417,7 @@ app.get(
       // we already filter above so this can't be undefined
       const workerHour = workerHourMap.get(t._key_per_personel)!;
 
-      const calculated = {
-        workerName: `${t.adi} ${t.soyadi}`,
-      } as CalculationResult;
+      const calculated = workerInfoFields(t) as CalculationResult;
 
       for (const [key, value] of Object.entries(toCalculate)) {
         const numValue = Number(value);

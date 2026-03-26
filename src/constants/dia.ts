@@ -17,6 +17,7 @@ export const workerTallySelectedColumns = [
   "soyadi",
   "tckimlikno",
   "sube",
+  "gorevi",
   "ucretturu",
   "toplamsigortagun",
   "argefaaliyetgunsayisi",

@@ -41,6 +41,7 @@ export type DiaWorkerTally = {
   soyadi: string;
   tckimlikno: string;
   sube: string;
+  gorevi: string;
   // yontem
   ucretturu: "N" | "B";
   toplamsigortagun: string;
