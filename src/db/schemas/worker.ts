@@ -1,4 +1,11 @@
-import { integer, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import {
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { connectionTable } from "./connection.js";
 
 export const workerTable = pgTable(
@@ -6,7 +13,11 @@ export const workerTable = pgTable(
   {
     id: integer().primaryKey().generatedByDefaultAsIdentity(),
     diaKey: text("dia_key").notNull(),
+    tc: varchar({ length: 11 }).unique().notNull(),
     name: text().notNull(),
+    department: text().notNull(),
+    branch: text().notNull(),
+    mission: text(),
     connectionId: integer("connection_id")
       .notNull()
       .references(() => connectionTable.id, { onDelete: "cascade" }),

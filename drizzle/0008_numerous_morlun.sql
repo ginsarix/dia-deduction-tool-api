@@ -1,0 +1,1 @@
+ALTER TABLE "project_workers" RENAME COLUMN "income_tax_rate" TO "income_tax_amount";

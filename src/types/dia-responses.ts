@@ -24,6 +24,10 @@ export type DiaPingResponse = {
 };
 
 export type DiaWorker = {
+  tckimlikno: string;
+  departmanaciklama: string;
+  sube: string;
+  gorevi: string;
   adisoyadi: string;
   _key: string;
 };
@@ -132,4 +136,9 @@ export type DiaWorkerTally = {
   isvozelsagliksigortasibrut: string;
   // İşv. Sağlık Sigortası (Net)
   isvozelsagliksigortasinet: string;
+};
+
+export type DiaDepartment = {
+  _key: string;
+  aciklama: string;
 };

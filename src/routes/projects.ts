@@ -1,24 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import { workerTallySelectedColumns } from "../constants/dia.js";
 import { db } from "../db/index.js";
 import { connectionTable } from "../db/schemas/connection.js";
 import { hourDefinitionTable } from "../db/schemas/hour-definition.js";
 import { projectTable } from "../db/schemas/project.js";
 import { projectWorkersTable } from "../db/schemas/project-workers.js";
 import { workerTable } from "../db/schemas/worker.js";
-import { DiaClient } from "../services/dia.js";
-import type { DiaFilter } from "../types/dia-requests.js";
-import type { DiaWorkerTally } from "../types/dia-responses.js";
-import { aesDecrypt } from "../utils/aes-256-gcm.js";
-import {
-  diaResponseIsSuccess,
-  employerCostWithIncentive,
-  employerCostWithoutIncentive,
-} from "../utils/dia.js";
 import {
   projectInsertSchema,
   projectUpdateSchema,
@@ -188,24 +177,21 @@ app.patch(
     const { id } = c.req.valid("param");
     const input = c.req.valid("json");
 
-    const updateResult = await db.transaction(async (tx) => {
-      await tx
-        .delete(projectWorkersTable)
-        .where(eq(projectWorkersTable.projectId, id))
-        .returning();
+    const toUpsert = input.map((o) => ({
+      ...o,
+      projectId: id,
+    }));
 
-      const toInsert = input.map((o) => ({
-        ...o,
-        projectId: id,
-      }));
-
-      const updatedAssignments = await tx
-        .insert(projectWorkersTable)
-        .values(toInsert)
-        .returning();
-
-      return updatedAssignments;
-    });
+    const updateResult = await db
+      .insert(projectWorkersTable)
+      .values(toUpsert)
+      .onConflictDoUpdate({
+        target: [projectWorkersTable.projectId, projectWorkersTable.workerId],
+        set: {
+          hourDefinitionId: sql`excluded.hour_definition_id`,
+        },
+      })
+      .returning();
 
     return c.json(
       {
@@ -217,64 +203,33 @@ app.patch(
   },
 );
 
-type ExcludedTallyFields =
-  | "_key_per_personel"
-  | "muhasebelesme"
-  | "duzenlemetarihi"
-  | "persdepartmanaciklama"
-  | "adi"
-  | "soyadi"
-  | "tckimlikno"
-  | "sube"
-  | "ucretturu"
-  | "carifisno"
-  | "isverenhastalikprimtutari"
-  | "isverenihtiyarlikprimtutari"
-  | "isverenanalikprimtutari"
-  | "isverentehlikederecesiprimtutari"
-  | "uzunvadeliskisveren"
-  | "gssisveren"
-  | "kisavadeliskisveren"
-  | "sgk_6111kanunindirimi"
-  | "kisavadeliskisveren_muafiyettutari"
-  | "uzunvadeliskisveren_muafiyettutari"
-  | "gssisveren_muafiyettutari"
-  | "artiisverendevlettesviki"
-  | "sgk_4447kanunindirimi"
-  | "sgk_16322kanunindirimi"
-  | "sgk_26322kanunindirimi"
-  | "sgk_7252kanunindirimi"
-  | "sgk_3294kanunindirimi"
-  | "sgk_2828kanunindirimi";
-
-type TallyKeys = keyof Omit<DiaWorkerTally, ExcludedTallyFields>;
-
-type CalculationResult = {
-  [K in TallyKeys]: number;
-} & {
-  workerName: string;
-  department: string;
-  tc: string;
-  branch: string;
-  mission: string;
-  employerCostWithoutIncentive: number;
-  employerCostWithIncentive: number;
-};
-
 app.get(
-  "/:id/calculations/:month?",
+  "/:id/rates",
   zValidator(
     "param",
     z.object({
       id: z.coerce.number().int().positive(),
-      month: z.coerce.number().int().min(1).max(12).optional(),
     }),
   ),
   async (c) => {
-    const { id: projectId, month } = c.req.valid("param");
+    const { id: projectId } = c.req.valid("param");
 
     const assignmentsQuery = db
-      .select({ hourDefinition: hourDefinitionTable, worker: workerTable })
+      .select({
+        projectWorkers: {
+          argeCenterWorkDays: projectWorkersTable.argeCenterWorkDays,
+          otherActivitiesWorkDays: projectWorkersTable.otherActivitiesWorkDays,
+          totalWorkDays: projectWorkersTable.totalWorkDays,
+          grossBaseSalary: projectWorkersTable.grossBaseSalary,
+          overtimeAdditionalPay: projectWorkersTable.overtimeAdditionalPay,
+          monthlyUpperLimit: projectWorkersTable.monthlyUpperLimit,
+          incomeTaxAmount: projectWorkersTable.incomeTaxAmount,
+          agi: projectWorkersTable.agi,
+          argeExemptionRate: projectWorkersTable.argeExemptionRate,
+        },
+        hourDefinition: hourDefinitionTable,
+        worker: workerTable,
+      })
       .from(projectWorkersTable)
       .innerJoin(workerTable, eq(projectWorkersTable.workerId, workerTable.id))
       .innerJoin(
@@ -284,12 +239,25 @@ app.get(
       .where(eq(projectWorkersTable.projectId, projectId));
 
     const projectQuery = db
-      .select()
+      .select({
+        sgk5510EmployeeShareRate: projectTable.sgk5510EmployeeShareRate,
+        sgk5510EmployeeUnemploymentShareRate:
+          projectTable.sgk5510EmployeeUnemploymentShareRate,
+        sgk5510EmployerShareRate: projectTable.sgk5510EmployerShareRate,
+        sgk5510EmployerUnemploymentShareRate:
+          projectTable.sgk5510EmployerUnemploymentShareRate,
+        sgk5746EmployerShareRate: projectTable.sgk5746EmployerShareRate,
+        sgk5746EmployerUnemploymentShareRate:
+          projectTable.sgk5746EmployerUnemploymentShareRate,
+        incomeTaxSgk5746EmployeeShareRate:
+          projectTable.incomeTaxSgk5746EmployeeShareRate,
+        incomeTaxSgk5746EmployeeUnemploymentShareRate:
+          projectTable.incomeTaxSgk5746EmployeeUnemploymentShareRate,
+      })
       .from(projectTable)
-      .where(eq(projectTable.id, projectId))
-      .then((p) => p[0]);
+      .where(eq(projectTable.id, projectId));
 
-    const [assignments, project] = await Promise.all([
+    const [assignments, [project]] = await Promise.all([
       assignmentsQuery,
       projectQuery,
     ]);
@@ -298,153 +266,121 @@ app.get(
       return c.json({ message: "Proje bulunamadı" }, 404);
     }
 
-    const [connection] = await db
-      .select()
-      .from(connectionTable)
-      .where(eq(connectionTable.id, project.connectionId));
-
-    const dia = await DiaClient.create({
-      serverCode: connection.diaServerCode,
-      sessionId: connection.sessionId ?? undefined,
-      connectionId: connection.id,
-      loginRequest: {
-        login: {
-          username: connection.diaUsername,
-          password: aesDecrypt(connection.diaPassword),
-          params: { apikey: connection.diaApiKey },
-        },
-      },
-    });
-
-    const workerKeysFilter: DiaFilter = {
-      field: "_key_per_personel",
-      operator: "IN",
-      value: assignments.map((a) => a.worker.diaKey).join(","),
-    };
-
-    const workerTalliesFilters: DiaFilter[] = [workerKeysFilter];
-
-    if (month) {
-      workerTalliesFilters.push({
-        field: "duzenlemeayno",
-        operator: "=",
-        value: String(month).padStart(2, "0"),
-      });
-    }
-
-    const workerTallies = await dia.getWorkerTallies({
-      per_personel_puantaj_listele: {
-        firma_kodu: connection.diaFirmCode,
-        donem_kodu: connection.diaPeriodCode ?? 0,
-        filters: workerTalliesFilters,
-        params: { selectedcolumns: workerTallySelectedColumns },
-      },
-    });
-
-    if (!diaResponseIsSuccess(workerTallies)) {
-      return c.json(
-        { message: workerTallies.msg },
-        +workerTallies.code as ContentfulStatusCode,
-      );
-    }
-
-    const workerHourMap = new Map(
-      assignments.map((a) => [a.worker.diaKey, a.hourDefinition]),
-    );
-
-    const matchedTallies = workerTallies.result.filter((t) =>
-      workerHourMap.has(t._key_per_personel),
-    );
-
-    const stripNonCalculable = (t: DiaWorkerTally) => {
-      const {
-        _key_per_personel,
-        toplamsigortagun,
-        argefaaliyetgunsayisi,
-        argegelirvergisigunsayisi,
-        muhasebelesme,
-        duzenlemetarihi,
-        persdepartmanaciklama,
-        adi,
-        soyadi,
-        tckimlikno,
-        sube,
-        ucretturu,
-        carifisno,
-        isverenhastalikprimtutari,
-        isverenihtiyarlikprimtutari,
-        isverenanalikprimtutari,
-        isverentehlikederecesiprimtutari,
-        uzunvadeliskisveren,
-        gssisveren,
-        kisavadeliskisveren,
-        artiisverendevlettesviki,
-        sgk_6111kanunindirimi,
-        kisavadeliskisveren_muafiyettutari,
-        uzunvadeliskisveren_muafiyettutari,
-        gssisveren_muafiyettutari,
-        sgk_4447kanunindirimi,
-        sgk_16322kanunindirimi,
-        sgk_26322kanunindirimi,
-        sgk_7252kanunindirimi,
-        sgk_3294kanunindirimi,
-        sgk_2828kanunindirimi,
-        ...toCalculate
-      } = t;
-
-      return toCalculate;
-    };
-
-    const workerInfoFields = (t: DiaWorkerTally) => ({
-      workerName: `${t.adi} ${t.soyadi}`,
-      tc: t.tckimlikno,
-      department: t.persdepartmanaciklama,
-      branch: t.sube,
-      mission: t.gorevi,
-    });
-
-    const originalTallies = matchedTallies.map((t) => ({
-      ...stripNonCalculable(t),
-      employerCostWithoutIncentive: employerCostWithoutIncentive(t),
-      employerCostWithIncentive: employerCostWithIncentive(t),
-      ...workerInfoFields(t),
-    }));
-
-    const calculations = matchedTallies.map((t) => {
-      // exclude properties that are not meant to be calculated
-      const toCalculate = stripNonCalculable(t);
-
-      // we already filter above so this can't be undefined
-      const workerHour = workerHourMap.get(t._key_per_personel)!;
-
-      const calculated = workerInfoFields(t) as CalculationResult;
-
-      for (const [key, value] of Object.entries(toCalculate)) {
-        const numValue = Number(value);
-
-        if (Number.isNaN(numValue)) {
-          continue;
-        }
-
-        calculated[key as TallyKeys] = numValue * workerHour.multiplier;
-      }
-
-      calculated.employerCostWithoutIncentive =
-        employerCostWithoutIncentive(t) * workerHour.multiplier;
-      calculated.employerCostWithIncentive =
-        employerCostWithIncentive(t) * workerHour.multiplier;
-
-      return calculated;
-    });
-
     return c.json(
       {
-        message: "Hesaplamalar başarıyla getirildi",
-        originalTallies,
-        calculations,
+        message: "Oranlar başarıyla getirildi",
+        rates: { workers: assignments, project },
       },
       200,
     );
+  },
+);
+
+app.patch(
+  "/:id/rates",
+  zValidator("param", z.object({ id: z.coerce.number().int().positive() })),
+  zValidator(
+    "json",
+    z.object({
+      project: z
+        .object({
+          sgk5510EmployeeShareRate: z.number().optional(),
+          sgk5510EmployeeUnemploymentShareRate: z.number().optional(),
+          sgk5510EmployerShareRate: z.number().optional(),
+          sgk5510EmployerUnemploymentShareRate: z.number().optional(),
+          sgk5746EmployerShareRate: z.number().optional(),
+          sgk5746EmployerUnemploymentShareRate: z.number().optional(),
+          incomeTaxSgk5746EmployeeShareRate: z.number().optional(),
+          incomeTaxSgk5746EmployeeUnemploymentShareRate: z.number().optional(),
+        })
+        .optional(),
+      workers: z
+        .array(
+          z.object({
+            workerId: z.number().int().positive(),
+            argeCenterWorkDays: z.number().int().optional(),
+            otherActivitiesWorkDays: z.number().int().optional(),
+            totalWorkDays: z.number().int().optional(),
+            grossBaseSalary: z.number().optional(),
+            overtimeAdditionalPay: z.number().optional(),
+            monthlyUpperLimit: z.number().optional(),
+            incomeTaxAmount: z.number().optional(),
+            agi: z.number().optional(),
+            argeExemptionRate: z.number().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+  async (c) => {
+    const { id: projectId } = c.req.valid("param");
+    const { project: projectRates, workers: workerRates } = c.req.valid("json");
+
+    const [existingProject] = await db
+      .select({ id: projectTable.id })
+      .from(projectTable)
+      .where(eq(projectTable.id, projectId));
+
+    if (!existingProject) {
+      return c.json({ message: "Proje bulunamadı" }, 404);
+    }
+
+    await db.transaction(async (tx) => {
+      if (projectRates && Object.keys(projectRates).length > 0) {
+        await tx
+          .update(projectTable)
+          .set(projectRates)
+          .where(eq(projectTable.id, projectId));
+      }
+
+      if (workerRates && workerRates.length > 0) {
+        const rows = workerRates.map(
+          ({ workerId, ...r }) =>
+            sql`(
+              ${workerId}::int,
+              ${r.argeCenterWorkDays ?? null}::int,
+              ${r.otherActivitiesWorkDays ?? null}::int,
+              ${r.totalWorkDays ?? null}::int,
+              ${r.grossBaseSalary ?? null}::numeric,
+              ${r.overtimeAdditionalPay ?? null}::numeric,
+              ${r.monthlyUpperLimit ?? null}::numeric,
+              ${r.incomeTaxAmount ?? null}::numeric,
+              ${r.agi ?? null}::numeric,
+              ${r.argeExemptionRate ?? null}::numeric
+            )`,
+        );
+
+        await tx.execute(sql`
+          UPDATE project_workers AS pw
+          SET
+            arge_center_work_days      = COALESCE(v.arge_center_work_days,      pw.arge_center_work_days),
+            other_activities_work_days = COALESCE(v.other_activities_work_days, pw.other_activities_work_days),
+            total_work_days            = COALESCE(v.total_work_days,            pw.total_work_days),
+            gross_base_salary          = COALESCE(v.gross_base_salary,          pw.gross_base_salary),
+            overtime_additional_pay    = COALESCE(v.overtime_additional_pay,    pw.overtime_additional_pay),
+            monthly_upper_limit        = COALESCE(v.monthly_upper_limit,        pw.monthly_upper_limit),
+            income_tax_amount          = COALESCE(v.income_tax_amount,          pw.income_tax_amount),
+            agi                        = COALESCE(v.agi,                        pw.agi),
+            "argeExemptionRate"        = COALESCE(v.arge_exemption_rate,        pw."argeExemptionRate")
+          FROM (VALUES ${sql.join(rows, sql`, `)}) AS v(
+            worker_id,
+            arge_center_work_days,
+            other_activities_work_days,
+            total_work_days,
+            gross_base_salary,
+            overtime_additional_pay,
+            monthly_upper_limit,
+            income_tax_amount,
+            agi,
+            arge_exemption_rate
+          )
+          WHERE pw.project_id = ${projectId}
+            AND pw.worker_id  = v.worker_id
+        `);
+      }
+    });
+
+    return c.json({ message: "Oranlar başarıyla güncellendi" }, 200);
   },
 );
 

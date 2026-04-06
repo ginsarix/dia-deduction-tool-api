@@ -10,6 +10,15 @@ import connectionsRouteGroup from "./routes/connections.js";
 import hourDefinitionsRouteGroup from "./routes/hour-definitions.js";
 import projectsRouteGroup from "./routes/projects.js";
 import workersRouteGroup from "./routes/workers.js";
+import { DiaClient } from "./services/dia.js";
+import { zValidator } from "@hono/zod-validator";
+import z from "zod";
+import { db } from "./db/index.js";
+import { connectionTable } from "./db/schemas/connection.js";
+import { eq } from "drizzle-orm";
+import { aesDecrypt } from "./utils/aes-256-gcm.js";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { diaResponseIsSuccess } from "./utils/dia.js";
 
 const app = new Hono().basePath("/api");
 
@@ -54,6 +63,7 @@ app.onError((err, c) => {
 app.get("/", (c) => {
   return c.text("Arge Merkezi Hesaplama API");
 });
+
 app.use("/connections/*", authMiddleware);
 app.use("/workers/*", authMiddleware);
 app.use("/projects/*", authMiddleware);
@@ -63,6 +73,67 @@ app.route("/connections", connectionsRouteGroup);
 app.route("/workers", workersRouteGroup);
 app.route("/projects", projectsRouteGroup);
 app.route("/hour-definitions", hourDefinitionsRouteGroup);
+
+app.get(
+  "/departments/:connectionId",
+  authMiddleware,
+  zValidator(
+    "param",
+    z.object({ connectionId: z.coerce.number().int().positive() }),
+  ),
+  async (c) => {
+    const { connectionId } = c.req.valid("param");
+
+    const [connection] = await db
+      .select()
+      .from(connectionTable)
+      .where(eq(connectionTable.id, connectionId));
+
+    if (!connection) {
+      return c.json({ message: "DIA bağlantısı bulunamadı" }, 404);
+    }
+
+    const dia = await DiaClient.create({
+      serverCode: connection.diaServerCode,
+      sessionId: connection.sessionId ?? undefined,
+      connectionId: connection.id,
+      loginRequest: {
+        login: {
+          username: connection.diaUsername,
+          password: aesDecrypt(connection.diaPassword),
+          params: { apikey: connection.diaApiKey },
+        },
+      },
+    });
+
+    const diaDepartments = await dia.getDepartments({
+      sis_departman_listele: {
+        firma_kodu: connection.diaFirmCode,
+        donem_kodu: connection.diaPeriodCode ?? 0,
+        params: {
+          selectedcolumns: ["_key", "aciklama"],
+        },
+      },
+    });
+
+    if (!diaResponseIsSuccess(diaDepartments)) {
+      return c.json(
+        { message: diaDepartments.msg },
+        +diaDepartments.code as ContentfulStatusCode,
+      );
+    }
+
+    const departments = diaDepartments.result.map((dd) => ({
+      key: dd._key,
+      name: dd.aciklama,
+    }));
+
+    return c.json({
+      message: "Departmanlar başarıyla getirildi",
+      departments,
+    });
+  },
+);
 
 serve(
   {

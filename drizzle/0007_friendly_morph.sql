@@ -1,0 +1,1 @@
+ALTER TABLE "project_workers" ALTER COLUMN "income_tax_rate" SET DATA TYPE numeric(15, 2);

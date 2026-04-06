@@ -33,14 +33,14 @@ export type DiaListParams = {
 };
 
 // I l❤️ve Typescript
-export type DiaRequest<KService extends string> = {
+export type DiaRequest<KService extends string, Columns = string[]> = {
   [K in KService]: {
     // in the api this is actually required,
     // but we're making it optional here for the sake of flexibility in the dia helper
     session_id?: string;
     firma_kodu: number;
     donem_kodu?: number;
-    params?: { selectedcolumns?: string[] } & Record<string, unknown>;
+    params?: { selectedcolumns?: Columns } & Record<string, unknown>;
   };
 };
 
@@ -62,7 +62,7 @@ export type DiaPingRequest = {
   };
 };
 
-export type DiaListRequest<KS extends string> = NestedIntersect<
-  DiaRequest<KS>,
+export type DiaListRequest<KS extends string, C = string[]> = NestedIntersect<
+  DiaRequest<KS, C>,
   DiaListParams
 >;

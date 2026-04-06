@@ -5,6 +5,7 @@ import { db } from "../db/index.js";
 import { connectionTable } from "../db/schemas/connection.js";
 import type { DiaListRequest, DiaLoginRequest } from "../types/dia-requests.js";
 import type {
+  DiaDepartment,
   DiaLoginResponse,
   DiaPingResponse,
   DiaResponse,
@@ -170,14 +171,24 @@ export class DiaClient {
   }
 
   async getWorkers(
-    request: DiaListRequest<"per_personel_listele">,
+    request: DiaListRequest<"per_personel_listele", (keyof DiaWorker)[]>,
   ): Promise<DiaResponse<DiaWorker[]>> {
     return this.request("per", request);
   }
 
+  // theres no essential reason to use this after the re-design of the system
   async getWorkerTallies(
-    request: DiaListRequest<"per_personel_puantaj_listele">,
+    request: DiaListRequest<
+      "per_personel_puantaj_listele",
+      (keyof DiaWorkerTally)[]
+    >,
   ): Promise<DiaResponse<DiaWorkerTally[]>> {
     return this.request("per", request);
+  }
+
+  async getDepartments(
+    request: DiaListRequest<"sis_departman_listele", (keyof DiaDepartment)[]>,
+  ): Promise<DiaResponse<DiaDepartment[]>> {
+    return this.request("sis", request);
   }
 }

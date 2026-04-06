@@ -62,13 +62,16 @@ app.post("/", zValidator("json", workerInsertSchema), async (c) => {
 });
 
 app.post(
-  "/sync/:connectionId",
+  "/sync/:connectionId/:departmentKey?",
   zValidator(
     "param",
-    z.object({ connectionId: z.coerce.number().int().positive() }),
+    z.object({
+      connectionId: z.coerce.number().int().positive(),
+      departmentKey: z.string().optional(),
+    }),
   ),
   async (c) => {
-    const { connectionId } = c.req.valid("param");
+    const { connectionId, departmentKey } = c.req.valid("param");
 
     const [connection] = await db
       .select()
@@ -96,7 +99,25 @@ app.post(
       per_personel_listele: {
         firma_kodu: connection.diaFirmCode,
         donem_kodu: connection.diaPeriodCode ?? 0,
-        params: { selectedcolumns: ["adisoyadi", "_key"] },
+        params: {
+          selectedcolumns: [
+            "tckimlikno",
+            "departmanaciklama",
+            "sube",
+            "gorevi",
+            "adisoyadi",
+            "_key",
+          ],
+        },
+        ...(departmentKey && {
+          filters: [
+            {
+              field: "_key_sis_departman",
+              operator: "=",
+              value: departmentKey,
+            },
+          ],
+        }),
       },
     });
 
@@ -108,6 +129,10 @@ app.post(
     }
 
     const incomingWorkers = diaWorkers.result.map((w) => ({
+      tc: w.tckimlikno,
+      department: w.departmanaciklama,
+      branch: w.sube,
+      mission: w.gorevi,
       name: w.adisoyadi,
       diaKey: w._key,
       connectionId: connection.id,
