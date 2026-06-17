@@ -6,6 +6,7 @@ import { logger } from "hono/logger";
 import { env } from "./config/env.js";
 import { auth } from "./lib/auth.js";
 import { authMiddleware } from "./middleware.js";
+import assignmentsRouteGroup from "./routes/assignments.js";
 import connectionsRouteGroup from "./routes/connections.js";
 import hourDefinitionsRouteGroup from "./routes/hour-definitions.js";
 import projectsRouteGroup from "./routes/projects.js";
@@ -68,11 +69,13 @@ app.use("/connections/*", authMiddleware);
 app.use("/workers/*", authMiddleware);
 app.use("/projects/*", authMiddleware);
 app.use("/hour-definitions/*", authMiddleware);
+app.use("/assignments/*", authMiddleware);
 
 app.route("/connections", connectionsRouteGroup);
 app.route("/workers", workersRouteGroup);
 app.route("/projects", projectsRouteGroup);
 app.route("/hour-definitions", hourDefinitionsRouteGroup);
+app.route("/assignments", assignmentsRouteGroup);
 
 app.get(
   "/departments/:connectionId",
