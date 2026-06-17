@@ -12,13 +12,23 @@ import {
 
 const app = new Hono();
 
-app.get("/", async (c) => {
-  const originalConnections = await db.select().from(connectionTable);
+const connectionPublicColumns = {
+  id: connectionTable.id,
+  name: connectionTable.name,
+  diaServerCode: connectionTable.diaServerCode,
+  diaUsername: connectionTable.diaUsername,
+  diaApiKey: connectionTable.diaApiKey,
+  diaFirmCode: connectionTable.diaFirmCode,
+  diaPeriodCode: connectionTable.diaPeriodCode,
+  sessionId: connectionTable.sessionId,
+  createdAt: connectionTable.createdAt,
+  updatedAt: connectionTable.updatedAt,
+} as const;
 
-  const connections = originalConnections.map((oc) => ({
-    ...oc,
-    diaPassword: undefined,
-  }));
+app.get("/", async (c) => {
+  const connections = await db
+    .select(connectionPublicColumns)
+    .from(connectionTable);
 
   return c.json(
     { message: "DIA bağlantıları başarıyla getirildi", connections },
@@ -32,7 +42,7 @@ app.get(
   async (c) => {
     const { id } = c.req.valid("param");
     const [connection] = await db
-      .select()
+      .select(connectionPublicColumns)
       .from(connectionTable)
       .where(eq(connectionTable.id, id));
 
@@ -40,10 +50,7 @@ app.get(
       return c.json({ message: "DIA bağlantısı bulunamadı" }, 404);
 
     return c.json(
-      {
-        message: "DIA bağlantısı başarıyla getirildi",
-        connection: { ...connection, diaPassword: undefined },
-      },
+      { message: "DIA bağlantısı başarıyla getirildi", connection },
       200,
     );
   },
@@ -54,7 +61,7 @@ app.post("/", zValidator("json", connectionInsertSchema), async (c) => {
   const [createdConnection] = await db
     .insert(connectionTable)
     .values({ ...input, diaPassword: aesEncrypt(input.diaPassword) })
-    .returning();
+    .returning(connectionPublicColumns);
 
   c.header("Location", `/connections/${createdConnection.id}`);
   return c.json(
@@ -84,7 +91,7 @@ app.patch(
             : input.diaPassword,
       })
       .where(eq(connectionTable.id, id))
-      .returning();
+      .returning(connectionPublicColumns);
 
     if (!updatedConnection) {
       return c.json({ message: "DIA bağlantısı bulunamadı" }, 404);

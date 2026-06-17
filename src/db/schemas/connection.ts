@@ -14,6 +14,7 @@ export const connectionTable = pgTable("connection", {
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 });

@@ -51,7 +51,7 @@ app.post("/", zValidator("json", workerInsertSchema), async (c) => {
     .values(input)
     .returning();
 
-  c.header("Location", `/connections/${createdWorker.id}`);
+  c.header("Location", `/workers/${createdWorker.id}`);
   return c.json(
     {
       message: "Personel başarıyla oluşturuldu",

@@ -7,6 +7,7 @@ export const hourDefinitionTable = pgTable("hour_definition", {
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 });
