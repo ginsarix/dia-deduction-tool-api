@@ -4,22 +4,22 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { hourDefinitionTable } from "../db/schemas/hour-definition.js";
-import { projectWorkersTable } from "../db/schemas/project-workers.js";
+import { monthWorkersTable } from "../db/schemas/month-workers.js";
 
 const app = new Hono();
 
 app.get("/", async (c) => {
   const assignments = await db
     .select({
-      projectId: projectWorkersTable.projectId,
-      workerId: projectWorkersTable.workerId,
-      hourDefinitionId: projectWorkersTable.hourDefinitionId,
+      monthId: monthWorkersTable.monthId,
+      workerId: monthWorkersTable.workerId,
+      hourDefinitionId: monthWorkersTable.hourDefinitionId,
       multiplier: hourDefinitionTable.multiplier,
     })
-    .from(projectWorkersTable)
+    .from(monthWorkersTable)
     .innerJoin(
       hourDefinitionTable,
-      eq(projectWorkersTable.hourDefinitionId, hourDefinitionTable.id),
+      eq(monthWorkersTable.hourDefinitionId, hourDefinitionTable.id),
     );
 
   return c.json({ message: "Atamalar başarıyla getirildi", assignments }, 200);
@@ -29,7 +29,7 @@ const putSchema = z.object({
   assignments: z.array(
     z.object({
       workerId: z.number().int().positive(),
-      projectId: z.number().int().positive(),
+      monthId: z.number().int().positive(),
       hourDefinitionId: z.number().int().positive(),
     }),
   ),
@@ -41,11 +41,16 @@ app.put("/", zValidator("json", putSchema), async (c) => {
   if (assignments.length > 0) {
     const hourDefIds = [...new Set(assignments.map((a) => a.hourDefinitionId))];
     const hourDefs = await db
-      .select({ id: hourDefinitionTable.id, multiplier: hourDefinitionTable.multiplier })
+      .select({
+        id: hourDefinitionTable.id,
+        multiplier: hourDefinitionTable.multiplier,
+      })
       .from(hourDefinitionTable)
       .where(inArray(hourDefinitionTable.id, hourDefIds));
 
-    const multiplierMap = new Map(hourDefs.map((h) => [h.id, Number(h.multiplier)]));
+    const multiplierMap = new Map(
+      hourDefs.map((h) => [h.id, Number(h.multiplier)]),
+    );
 
     const workerSums = new Map<number, number>();
     for (const a of assignments) {
@@ -68,41 +73,43 @@ app.put("/", zValidator("json", putSchema), async (c) => {
   await db.transaction(async (tx) => {
     const existing = await tx
       .select({
-        projectId: projectWorkersTable.projectId,
-        workerId: projectWorkersTable.workerId,
+        monthId: monthWorkersTable.monthId,
+        workerId: monthWorkersTable.workerId,
       })
-      .from(projectWorkersTable);
+      .from(monthWorkersTable);
 
-    const newSet = new Set(assignments.map((a) => `${a.projectId}:${a.workerId}`));
-    const toDelete = existing.filter((e) => !newSet.has(`${e.projectId}:${e.workerId}`));
+    const newSet = new Set(
+      assignments.map((a) => `${a.monthId}:${a.workerId}`),
+    );
+    const toDelete = existing.filter(
+      (e) => !newSet.has(`${e.monthId}:${e.workerId}`),
+    );
 
     if (toDelete.length > 0) {
-      // Group by projectId so each delete is one IN-query
-      const byProject = new Map<number, number[]>();
+      const byMonth = new Map<number, number[]>();
       for (const row of toDelete) {
-        const ids = byProject.get(row.projectId) ?? [];
+        const ids = byMonth.get(row.monthId) ?? [];
         ids.push(row.workerId);
-        byProject.set(row.projectId, ids);
+        byMonth.set(row.monthId, ids);
       }
-      for (const [projectId, workerIds] of byProject) {
+      for (const [monthId, workerIds] of byMonth) {
         await tx
-          .delete(projectWorkersTable)
+          .delete(monthWorkersTable)
           .where(
             and(
-              eq(projectWorkersTable.projectId, projectId),
-              inArray(projectWorkersTable.workerId, workerIds),
+              eq(monthWorkersTable.monthId, monthId),
+              inArray(monthWorkersTable.workerId, workerIds),
             ),
           );
       }
     }
 
-    // Upsert preserves existing rate fields — only updates hourDefinitionId when changed
     if (assignments.length > 0) {
       await tx
-        .insert(projectWorkersTable)
+        .insert(monthWorkersTable)
         .values(assignments)
         .onConflictDoUpdate({
-          target: [projectWorkersTable.projectId, projectWorkersTable.workerId],
+          target: [monthWorkersTable.monthId, monthWorkersTable.workerId],
           set: { hourDefinitionId: sql`excluded.hour_definition_id` },
         });
     }

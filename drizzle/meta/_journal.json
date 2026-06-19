@@ -71,6 +71,34 @@
       "when": 1781691455029,
       "tag": "0009_dashing_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781859332227,
+      "tag": "0010_small_emma_frost",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1781868498887,
+      "tag": "0011_foamy_lionheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1781878260575,
+      "tag": "0012_foamy_the_enforcers",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781878495982,
+      "tag": "0013_bumpy_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }

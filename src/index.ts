@@ -9,6 +9,7 @@ import { authMiddleware } from "./middleware.js";
 import assignmentsRouteGroup from "./routes/assignments.js";
 import connectionsRouteGroup from "./routes/connections.js";
 import hourDefinitionsRouteGroup from "./routes/hour-definitions.js";
+import monthsRouteGroup from "./routes/months.js";
 import projectsRouteGroup from "./routes/projects.js";
 import workersRouteGroup from "./routes/workers.js";
 import { DiaClient } from "./services/dia.js";
@@ -67,12 +68,14 @@ app.get("/", (c) => {
 
 app.use("/connections/*", authMiddleware);
 app.use("/workers/*", authMiddleware);
+app.use("/months/*", authMiddleware);
 app.use("/projects/*", authMiddleware);
 app.use("/hour-definitions/*", authMiddleware);
 app.use("/assignments/*", authMiddleware);
 
 app.route("/connections", connectionsRouteGroup);
 app.route("/workers", workersRouteGroup);
+app.route("/months", monthsRouteGroup);
 app.route("/projects", projectsRouteGroup);
 app.route("/hour-definitions", hourDefinitionsRouteGroup);
 app.route("/assignments", assignmentsRouteGroup);
