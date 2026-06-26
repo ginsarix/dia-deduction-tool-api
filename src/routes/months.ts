@@ -1,13 +1,19 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { db } from "../db/index.js";
+import { connectionTable } from "../db/schemas/connection.js";
 import { hourDefinitionTable } from "../db/schemas/hour-definition.js";
 import { monthTable } from "../db/schemas/month.js";
 import { monthWorkersTable } from "../db/schemas/month-workers.js";
 import { projectTable } from "../db/schemas/project.js";
 import { workerTable } from "../db/schemas/worker.js";
+import { DiaClient } from "../services/dia.js";
+import type { DiaWorkerTally } from "../types/dia-responses.js";
+import { aesDecrypt } from "../utils/aes-256-gcm.js";
+import { diaResponseIsSuccess } from "../utils/dia.js";
 import { monthInsertSchema, monthUpdateSchema } from "../validations/schemas.js";
 
 const app = new Hono();
@@ -373,6 +379,117 @@ app.patch(
     });
 
     return c.json({ message: "Oranlar başarıyla güncellendi" }, 200);
+  },
+);
+
+app.post(
+  "/:id/sync-rates",
+  zValidator("param", z.object({ id: z.coerce.number().int().positive() })),
+  async (c) => {
+    const { id: monthId } = c.req.valid("param");
+
+    const assignedWorkers = await db
+      .select({
+        workerId: workerTable.id,
+        projectId: monthWorkersTable.projectId,
+        diaKey: workerTable.diaKey,
+        connectionId: workerTable.connectionId,
+      })
+      .from(monthWorkersTable)
+      .innerJoin(workerTable, eq(monthWorkersTable.workerId, workerTable.id))
+      .where(eq(monthWorkersTable.monthId, monthId));
+
+    if (assignedWorkers.length === 0) {
+      return c.json({ message: "Bu aya atanmış personel yok", updated: 0 }, 200);
+    }
+
+    const workersByConnection = new Map<number, typeof assignedWorkers>();
+    for (const w of assignedWorkers) {
+      if (!workersByConnection.has(w.connectionId)) workersByConnection.set(w.connectionId, []);
+      workersByConnection.get(w.connectionId)!.push(w);
+    }
+
+    const connections = await db
+      .select()
+      .from(connectionTable)
+      .where(inArray(connectionTable.id, [...workersByConnection.keys()]));
+
+    const SELECTED_COLUMNS = [
+      "_key_per_personel",
+      "toplamsigortagun",
+      "argefaaliyetgunsayisi",
+      "aylikbrutkazanc",
+      "gelirvergisitutari",
+      "mahsupedilecekagi",
+    ] satisfies (keyof DiaWorkerTally)[];
+
+    let updated = 0;
+
+    for (const connection of connections) {
+      const workers = workersByConnection.get(connection.id) ?? [];
+      const diaKeyToWorkers = new Map<string, typeof assignedWorkers>();
+      for (const w of workers) {
+        if (!diaKeyToWorkers.has(w.diaKey)) diaKeyToWorkers.set(w.diaKey, []);
+        diaKeyToWorkers.get(w.diaKey)!.push(w);
+      }
+
+      const dia = await DiaClient.create({
+        serverCode: connection.diaServerCode,
+        sessionId: connection.sessionId ?? undefined,
+        connectionId: connection.id,
+        loginRequest: {
+          login: {
+            username: connection.diaUsername,
+            password: aesDecrypt(connection.diaPassword),
+            params: { apikey: connection.diaApiKey },
+          },
+        },
+      });
+
+      const diaTallies = await dia.getWorkerTallies({
+        per_personel_puantaj_listele: {
+          firma_kodu: connection.diaFirmCode,
+          donem_kodu: connection.diaPeriodCode ?? 0,
+          params: { selectedcolumns: SELECTED_COLUMNS },
+        },
+      });
+
+      if (!diaResponseIsSuccess(diaTallies)) {
+        return c.json({ message: diaTallies.msg }, +diaTallies.code as ContentfulStatusCode);
+      }
+
+      // Deduplicate by diaKey — last row from DIA wins (handles DIA's zero-row + real-row pattern)
+      const tallyByDiaKey = new Map<string, DiaWorkerTally>();
+      for (const t of diaTallies.result) tallyByDiaKey.set(t._key_per_personel, t);
+
+      await db.transaction(async (tx) => {
+        for (const [diaKey, tally] of tallyByDiaKey) {
+          const matchedWorkers = diaKeyToWorkers.get(diaKey);
+          if (!matchedWorkers) continue;
+
+          const newValues = {
+            argeCenterWorkDays: Math.round(+tally.argefaaliyetgunsayisi || 0),
+            totalWorkDays: Math.round(+tally.toplamsigortagun || 0),
+            grossBaseSalary: +tally.aylikbrutkazanc || 0,
+            incomeTaxAmount: +tally.gelirvergisitutari || 0,
+            agi: +tally.mahsupedilecekagi || 0,
+          };
+
+          for (const worker of matchedWorkers) {
+            await tx.update(monthWorkersTable).set(newValues).where(
+              and(
+                eq(monthWorkersTable.monthId, monthId),
+                eq(monthWorkersTable.projectId, worker.projectId),
+                eq(monthWorkersTable.workerId, worker.workerId),
+              ),
+            );
+            updated++;
+          }
+        }
+      });
+    }
+
+    return c.json({ message: "Puantaj verileri aktarıldı", updated }, 200);
   },
 );
 
