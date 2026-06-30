@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
@@ -129,15 +129,22 @@ app.post(
       );
     }
 
-    const incomingWorkers = diaWorkers.result.map((w) => ({
-      tc: w.tckimlikno,
-      department: w.departmanaciklama,
-      branch: w.sube,
-      mission: w.gorevi,
-      name: w.adisoyadi,
-      diaKey: w._key,
-      connectionId: connection.id,
-    }));
+    const incomingWorkers = Array.from(
+      new Map(
+        diaWorkers.result.map((w) => [
+          w.tckimlikno,
+          {
+            tc: w.tckimlikno,
+            department: w.departmanaciklama,
+            branch: w.sube,
+            mission: w.gorevi,
+            name: w.adisoyadi,
+            diaKey: w._key,
+            connectionId: connection.id,
+          },
+        ]),
+      ).values(),
+    );
 
     const existingWorkers = await db
       .select()
@@ -160,7 +167,20 @@ app.post(
 
     await Promise.all([
       toInsert.length > 0
-        ? db.insert(workerTable).values(toInsert)
+        ? db
+            .insert(workerTable)
+            .values(toInsert)
+            .onConflictDoUpdate({
+              target: workerTable.tc,
+              set: {
+                diaKey: sql`excluded.dia_key`,
+                name: sql`excluded.name`,
+                department: sql`excluded.department`,
+                branch: sql`excluded.branch`,
+                mission: sql`excluded.mission`,
+                connectionId: sql`excluded.connection_id`,
+              },
+            })
         : Promise.resolve(),
 
       ...toUpdate.map((w) =>
