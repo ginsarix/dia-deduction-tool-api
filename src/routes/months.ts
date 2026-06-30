@@ -441,6 +441,7 @@ app.post(
           login: {
             username: connection.diaUsername,
             password: aesDecrypt(connection.diaPassword),
+            disconnect_same_user: "true",
             params: { apikey: connection.diaApiKey },
           },
         },

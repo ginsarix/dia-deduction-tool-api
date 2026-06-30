@@ -70,6 +70,7 @@ export class DiaClient {
       try {
         const pingResponse = await fetch(requestUrl, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sis_ping: { session_id: sessionId } }),
         });
 
@@ -93,6 +94,7 @@ export class DiaClient {
 
     const loginResponse = await fetch(requestUrl, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(loginRequest),
     });
 
@@ -142,6 +144,7 @@ export class DiaClient {
 
     const response = await fetch(createDiaUrl(this.serverCode, module), {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(bodyWithSession),
       signal: AbortSignal.timeout(15000), // timeout after 15 seconds since fetch in node doesnt have a default timeout
     });
