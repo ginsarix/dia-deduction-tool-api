@@ -21,6 +21,7 @@ import { eq } from "drizzle-orm";
 import { aesDecrypt } from "./utils/aes-256-gcm.js";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { diaResponseIsSuccess } from "./utils/dia.js";
+import { withFrontend } from "./static.js";
 
 const app = new Hono().basePath("/api");
 
@@ -142,9 +143,11 @@ app.get(
   },
 );
 
+const server = withFrontend(app);
+
 serve(
   {
-    fetch: app.fetch,
+    fetch: server.fetch,
     // hosting environment might inject its own port
     port: Number(process.env.PORT) || 3000,
     ...(env.NODE_ENV === "production" && { host: "0.0.0.0" }),
